@@ -187,7 +187,7 @@ def main():
     """
     程序入口。
     """
-    base_url = 'https://pissvids.com/models/page/'  # 基础 URL
+    base_url = 'https://.com/models/page/'  # 基础 URL
     down_info(base_url)
 
 if __name__ == '__main__':
