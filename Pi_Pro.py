@@ -2,11 +2,15 @@ import csv
 import time
 import random
 import logging
+from logging import lastResort
 from urllib.parse import urljoin
-
+import selenium
 import requests
 import bs4
 from concurrent.futures import ThreadPoolExecutor
+
+from pandas.tseries.holiday import next_monday
+from statsmodels.sandbox.regression.penalized import next_odd
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -89,16 +93,22 @@ def process_page(base_url, page, writer):
             })
         else:
             logging.warning(f"未找到完整信息：{star_info_url}")
-        time.sleep(random.randint(2, 5))  # 随机等待，避免被封禁
+        time.sleep(random.randint(1, 3))  # 随机等待，避免被封禁
 
         video_page_list = star_info.find_all('a', class_='pagination__item __pagination_button')
-        print(video_page_list)
-        if video_page_list == []:
-            video_page = star_info_url
-            save_video_list(star_name.text.strip(), video_page)
+
+        if not video_page_list:
+            page_index = 1
+            save_video_list(star_name.text.strip(), star_info_url, page_index)
         else:
             for video_page in video_page_list:
-                save_video_list(star_name.text.strip(), video_page['href'])
+                next_page_index = video_page.findNext('a', class_='pagination__item __pagination_button')
+                next_next_page_index = next_page_index.find_next_sibling('a', class_='pagination__item __pagination_button')
+                if next_next_page_index == None:
+                    pro_page_index = int(next_page_index['href'][-1])
+                    break
+            save_video_list(star_name.text.strip(), star_info_url,pro_page_index)
+
     logging.info(f"Page {page}/111 抓取完成。")
 
 def clean_filename(filename):
@@ -108,7 +118,7 @@ def clean_filename(filename):
         filename = filename.replace(char, '_')
     return filename
 
-def save_video_list(star_name, star_info_url):
+def save_video_list(star_name, star_info_url,page_index):
     # 清理文件名
     star_name = clean_filename(star_name)
     # 打开 CSV 文件
@@ -116,28 +126,35 @@ def save_video_list(star_name, star_info_url):
         writer = csv.writer(vi)
         print(f"开始写入{star_name}的视频列表")
         #writer.writerow(['Video Name'])  # 写入表头
-        while True:
+        for i in range(1,page_index+1):
             # 获取当前页的内容
-            #star_info_url_sub = urljoin(star_info_url,str(subpage))  # 拼接 URL
+            star_info_url_sub = urljoin(star_info_url,str(i))  # 拼接 URL
             #print(star_info_url_sub)
-            star_info_html = request_content(star_info_url)
+            star_info_html = request_content(star_info_url_sub)
             if not star_info_html:
-                print(f"无法获取页面: {star_info_url}")
-                break
+                print(f"无法获取页面: {star_info_url_sub}")
+
             star_info = bs4.BeautifulSoup(star_info_html, 'html.parser')
             video_list = star_info.find_all('div', class_='card-scene__text')
             # 如果没有视频列表，退出循环
             if not video_list:
-                print(f"第 {star_info_url[-1]} 页没有视频列表")
-                break
+                print(f"第 {star_info_url_sub} 页没有视频列表")
+
             # 写入视频名称
             for video in video_list:
                 video_name = video.find('a').text.strip()
                 writer.writerow([video_name])
+            #write-in actors
+            video_page_url = video.find('div', class_='card-scene__text')['href']
+            video_page_soup = bs4.BeautifulSoup(request_content(video_page_url), 'html.parser')
+            actors = video_page_soup.find_all('a', class_='text-primary')
+                for actor in actors:
+                    actor_name = actor.text.strip()
+                    writer.writecols([actor_name])
 
-            print(f"{star_name}----第 {star_info_url[-1]} 页视频列表已写入")
-            time.sleep(random.randint(2, 5))  # 随机等待
-            break
+            print(f"{star_name}----第 {i}/{page_index} 页视频列表已写入")
+            time.sleep(random.randint(1, 3))  # 随机等待
+
 def down_info(base_url):
     """
     主抓取函数，负责多线程抓取并保存数据。
