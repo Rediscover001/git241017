@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 def request_content(url, retries=3):
     """
     发送 HTTP 请求并返回网页内容。
@@ -90,29 +89,18 @@ def process_page(base_url, page, writer):
             })
         else:
             logging.warning(f"未找到完整信息：{star_info_url}")
-
         time.sleep(random.randint(2, 5))  # 随机等待，避免被封禁
 
-        save_video_list(star_name.text.strip(), star_info_url)
-
+        video_page_list = star_info.find_all('a', class_='pagination__item __pagination_button')
+        print(video_page_list)
+        if video_page_list == []:
+            video_page = star_info_url
+            save_video_list(star_name.text.strip(), video_page)
+        else:
+            for video_page in video_page_list:
+                save_video_list(star_name.text.strip(), video_page['href'])
     logging.info(f"Page {page}/111 抓取完成。")
 
-
-"""
-        star_name = star_name.text.strip()
-        with open(file=star_name+'.csv',mode = 'w',encoding='utf-8',newline='') as vi:
-            subpage = 2
-            while star_info:
-                video_list = star_info.find_all('div', class_ = 'card-scene__text')
-                for video in video_list:
-                    video_name = video.find('a').text
-                    writer.writerow([video_name])
-
-                star_info_url_sub = star_info_url + '/' +str(subpage)
-                star_info = bs4.BeautifulSoup(request_content(star_info_url_sub),'html.parser')
-                subpage = subpage + 1
-                time.sleep(random.randint(2,5))
-"""
 def clean_filename(filename):
     """清理文件名中的非法字符"""
     invalid_chars = '<>:"/\\|?*'
@@ -123,51 +111,33 @@ def clean_filename(filename):
 def save_video_list(star_name, star_info_url):
     # 清理文件名
     star_name = clean_filename(star_name)
-
     # 打开 CSV 文件
-    with open(file=f"./Data/{star_name}.csv", mode='w', encoding='utf-8', newline='') as vi:
+    with open(file=f"./Data/{star_name}.csv", mode='a', encoding='utf-8', newline='') as vi:
         writer = csv.writer(vi)
         print(f"开始写入{star_name}的视频列表")
-        writer.writerow(['Video Name'])  # 写入表头
-        subpage = 1
-
-
+        #writer.writerow(['Video Name'])  # 写入表头
         while True:
             # 获取当前页的内容
-            #if subpage == 1: subpage = None
-            star_info_url_sub = urljoin(star_info_url,str(subpage))  # 拼接 URL
+            #star_info_url_sub = urljoin(star_info_url,str(subpage))  # 拼接 URL
             #print(star_info_url_sub)
-            star_info_html = request_content(star_info_url_sub)
+            star_info_html = request_content(star_info_url)
             if not star_info_html:
-                print(f"无法获取页面: {star_info_url_sub}")
+                print(f"无法获取页面: {star_info_url}")
                 break
-
             star_info = bs4.BeautifulSoup(star_info_html, 'html.parser')
             video_list = star_info.find_all('div', class_='card-scene__text')
-
             # 如果没有视频列表，退出循环
             if not video_list:
-                print(f"第 {subpage} 页没有视频列表")
+                print(f"第 {star_info_url[-1]} 页没有视频列表")
                 break
-
             # 写入视频名称
-
-
             for video in video_list:
                 video_name = video.find('a').text.strip()
-
                 writer.writerow([video_name])
 
-            print(f"{star_name}----第 {subpage} 页视频列表已写入")
-
-            # 翻页
-            subpage += 1
+            print(f"{star_name}----第 {star_info_url[-1]} 页视频列表已写入")
             time.sleep(random.randint(2, 5))  # 随机等待
-
-            """if subpage == 2:
-                break"""
-
-
+            break
 def down_info(base_url):
     """
     主抓取函数，负责多线程抓取并保存数据。
